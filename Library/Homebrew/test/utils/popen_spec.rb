@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "utils/popen"
 
-describe Utils do
+RSpec.describe Utils do
   describe "::popen_read" do
     it "reads the standard output of a given command" do
       expect(described_class.popen_read("sh", "-c", "echo success").chomp).to eq("success")

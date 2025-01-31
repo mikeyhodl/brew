@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "formula"
 
-describe Formula do
+RSpec.describe Formula do
   def formula(&block)
     super do
       url "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"

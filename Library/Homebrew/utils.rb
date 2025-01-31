@@ -1,30 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
-require "time"
-
-require "utils/analytics"
-require "utils/curl"
-require "utils/fork"
-require "utils/formatter"
-require "utils/gems"
-require "utils/git"
-require "utils/git_repository"
-require "utils/github"
-require "utils/gzip"
-require "utils/inreplace"
-require "utils/link"
-require "utils/popen"
-require "utils/repology"
-require "utils/svn"
-require "utils/tty"
-require "tap_constants"
-require "PATH"
-require "extend/kernel"
+require "context"
 
 module Homebrew
   extend Context
-  extend T::Sig
 
   def self._system(cmd, *args, **options)
     pid = fork do
@@ -43,12 +23,14 @@ module Homebrew
 
   def self.system(cmd, *args, **options)
     if verbose?
-      puts "#{cmd} #{args * " "}".gsub(RUBY_PATH, "ruby")
-                                 .gsub($LOAD_PATH.join(File::PATH_SEPARATOR).to_s, "$LOAD_PATH")
+      out = (options[:out] == :err) ? $stderr : $stdout
+      out.puts "#{cmd} #{args * " "}".gsub(RUBY_PATH, "ruby")
+                                     .gsub($LOAD_PATH.join(File::PATH_SEPARATOR).to_s, "$LOAD_PATH")
     end
     _system(cmd, *args, **options)
   end
 
+  # `Module` and `Regexp` are global variables used as types here so they don't need to be imported
   # rubocop:disable Style/GlobalVars
   sig { params(the_module: Module, pattern: Regexp).void }
   def self.inject_dump_stats!(the_module, pattern)
@@ -61,10 +43,12 @@ module Homebrew
 
         method = instance_method(name)
         define_method(name) do |*args, &block|
+          require "time"
+
           time = Time.now
 
           begin
-            method.bind(self).call(*args, &block)
+            method.bind_call(self, *args, &block)
           ensure
             $times[name] ||= 0
             $times[name] += Time.now - time
@@ -79,7 +63,7 @@ module Homebrew
     at_exit do
       col_width = [$times.keys.map(&:size).max.to_i + 2, 15].max
       $times.sort_by { |_k, v| v }.each do |method, time|
-        puts format("%<method>-#{col_width}s %<time>0.4f sec", method: "#{method}:", time: time)
+        puts format("%<method>-#{col_width}s %<time>0.4f sec", method: "#{method}:", time:)
       end
     end
   end
@@ -87,8 +71,6 @@ module Homebrew
 end
 
 module Utils
-  extend T::Sig
-
   # Removes the rightmost segment from the constant expression in the string.
   #
   #   deconstantize('Net::HTTP')   # => "Net"
@@ -168,5 +150,18 @@ module Utils
     word.tr!("-", "_")
     word.downcase!
     word
+  end
+
+  SAFE_FILENAME_REGEX = /[[:cntrl:]#{Regexp.escape("#{File::SEPARATOR}#{File::ALT_SEPARATOR}")}]/o
+  private_constant :SAFE_FILENAME_REGEX
+
+  sig { params(basename: String).returns(T::Boolean) }
+  def self.safe_filename?(basename)
+    !SAFE_FILENAME_REGEX.match?(basename)
+  end
+
+  sig { params(basename: String).returns(String) }
+  def self.safe_filename(basename)
+    basename.gsub(SAFE_FILENAME_REGEX, "")
   end
 end

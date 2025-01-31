@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require_relative "shared_examples"
 
-describe UnpackStrategy::Cvs do
+RSpec.describe UnpackStrategy::Cvs do
   let(:repo) do
     mktmpdir.tap do |repo|
       FileUtils.touch repo/"test"

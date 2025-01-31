@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "ast_constants"
@@ -14,8 +14,9 @@ module RuboCop
       class ComponentsOrder < FormulaCop
         extend AutoCorrector
 
-        def audit_formula(_node, _class_node, _parent_class_node, body_node)
-          return if body_node.nil?
+        sig { override.params(formula_nodes: FormulaNodes).void }
+        def audit_formula(formula_nodes)
+          return if (body_node = formula_nodes.body_node).nil?
 
           @present_components, @offensive_nodes = check_order(FORMULA_COMPONENT_PRECEDENCE_LIST, body_node)
 
@@ -26,6 +27,11 @@ module RuboCop
             [{ name: :resource, type: :block_call }],
             [{ name: :patch, type: :method_call }, { name: :patch, type: :block_call }],
           ]
+
+          head_blocks = find_blocks(body_node, :head)
+          head_blocks.each do |head_block|
+            check_block_component_order(FORMULA_COMPONENT_PRECEDENCE_LIST, head_block)
+          end
 
           on_system_methods.each do |on_method|
             on_method_blocks = find_blocks(body_node, on_method)
@@ -41,6 +47,8 @@ module RuboCop
 
           resource_blocks = find_blocks(body_node, :resource)
           resource_blocks.each do |resource_block|
+            check_block_component_order(FORMULA_COMPONENT_PRECEDENCE_LIST, resource_block)
+
             on_system_blocks = {}
 
             on_system_methods.each do |on_method|
@@ -82,13 +90,13 @@ module RuboCop
               method_name = on_system_block.method_name
               child_nodes = on_system_body.begin_type? ? on_system_body.child_nodes : [on_system_body]
               if child_nodes.all? { |n| n.send_type? || n.block_type? || n.lvasgn_type? }
-                method_names = child_nodes.map do |node|
+                method_names = child_nodes.filter_map do |node|
                   next if node.lvasgn_type?
                   next if node.method_name == :patch
                   next if on_system_methods.include? node.method_name
 
                   node.method_name
-                end.compact
+                end
                 next if method_names.empty? || allowed_methods.include?(method_names)
               end
               offending_node(on_system_block)
@@ -111,8 +119,13 @@ module RuboCop
           end
         end
 
+        def check_block_component_order(component_precedence_list, block)
+          @present_components, offensive_node = check_order(component_precedence_list, block.body)
+          component_problem(*offensive_node) if offensive_node
+        end
+
         def check_on_system_block_content(component_precedence_list, on_system_block)
-          if on_system_block.body.block_type? && !on_system_methods.include?(on_system_block.body.method_name) # rubocop:disable Style/InverseMethods (false positive)
+          if on_system_block.body.block_type? && !on_system_methods.include?(on_system_block.body.method_name)
             offending_node(on_system_block)
             problem "Nest `#{on_system_block.method_name}` blocks inside `#{on_system_block.body.method_name}` " \
                     "blocks when there is only one inner block." do |corrector|

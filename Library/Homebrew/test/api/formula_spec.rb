@@ -1,14 +1,12 @@
-# typed: false
 # frozen_string_literal: true
 
 require "api"
 
-describe Homebrew::API::Formula do
+RSpec.describe Homebrew::API::Formula do
   let(:cache_dir) { mktmpdir }
 
   before do
     stub_const("Homebrew::API::HOMEBREW_CACHE_API", cache_dir)
-    described_class.clear_cache
   end
 
   def mock_curl_download(stdout:)

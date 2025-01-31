@@ -1,12 +1,8 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # Settings for the build environment.
-#
-# @api private
 class BuildEnvironment
-  extend T::Sig
-
   sig { params(settings: Symbol).void }
   def initialize(*settings)
     @settings = Set.new(settings)
@@ -31,10 +27,8 @@ class BuildEnvironment
 
   # DSL for specifying build environment settings.
   module DSL
-    extend T::Sig
-
     # Initialise @env for each class which may use this DSL (e.g. each formula subclass).
-    # `env` may never be called, and it needs to be initialised before the class is frozen.
+    # `env` may never be called and it needs to be initialised before the class is frozen.
     def inherited(child)
       super
       child.instance_eval do
@@ -55,6 +49,7 @@ class BuildEnvironment
     CMAKE_PREFIX_PATH CMAKE_INCLUDE_PATH CMAKE_LIBRARY_PATH CMAKE_FRAMEWORK_PATH
     MACOSX_DEPLOYMENT_TARGET PKG_CONFIG_PATH PKG_CONFIG_LIBDIR
     HOMEBREW_DEBUG HOMEBREW_MAKE_JOBS HOMEBREW_VERBOSE
+    all_proxy ftp_proxy http_proxy https_proxy no_proxy
     HOMEBREW_SVN HOMEBREW_GIT
     HOMEBREW_SDKROOT
     MAKE GIT CPP
@@ -76,7 +71,7 @@ class BuildEnvironment
     keys.each do |key|
       value = env.fetch(key)
 
-      string = +"#{key}: #{value}"
+      string = "#{key}: #{value}"
       case key
       when "CC", "CXX", "LD"
         string << " => #{Pathname.new(value).realpath}" if value.present? && File.symlink?(value)

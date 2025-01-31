@@ -1,19 +1,18 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "bundle_version"
 require "cask/cask"
 require "cask/installer"
+require "system_command"
 
 module Homebrew
   # Check unversioned casks for updates by extracting their
   # contents and guessing the version from contained files.
-  #
-  # @api private
   class UnversionedCaskChecker
-    extend T::Sig
+    include SystemCommand::Mixin
 
-    sig {  returns(Cask::Cask) }
+    sig { returns(Cask::Cask) }
     attr_reader :cask
 
     sig { params(cask: Cask::Cask).void }
@@ -31,9 +30,34 @@ module Homebrew
       @apps ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::App) }
     end
 
+    sig { returns(T::Array[Cask::Artifact::KeyboardLayout]) }
+    def keyboard_layouts
+      @keyboard_layouts ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::KeyboardLayout) }
+    end
+
     sig { returns(T::Array[Cask::Artifact::Qlplugin]) }
     def qlplugins
       @qlplugins ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::Qlplugin) }
+    end
+
+    sig { returns(T::Array[Cask::Artifact::Dictionary]) }
+    def dictionaries
+      @dictionaries ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::Dictionary) }
+    end
+
+    sig { returns(T::Array[Cask::Artifact::ScreenSaver]) }
+    def screen_savers
+      @screen_savers ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::ScreenSaver) }
+    end
+
+    sig { returns(T::Array[Cask::Artifact::Colorpicker]) }
+    def colorpickers
+      @colorpickers ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::Colorpicker) }
+    end
+
+    sig { returns(T::Array[Cask::Artifact::Mdimporter]) }
+    def mdimporters
+      @mdimporters ||= @cask.artifacts.select { |a| a.is_a?(Cask::Artifact::Mdimporter) }
     end
 
     sig { returns(T::Array[Cask::Artifact::Installer]) }
@@ -88,14 +112,34 @@ module Homebrew
         versions[id] = version if id && version
       end
 
-      Dir.mktmpdir do |dir|
+      Dir.mktmpdir("cask-checker", HOMEBREW_TEMP) do |dir|
         dir = Pathname(dir)
 
         installer.extract_primary_container(to: dir)
 
-        info_plist_paths = apps.concat(qlplugins, installers).flat_map do |artifact|
-          source = artifact.is_a?(Cask::Artifact::Installer) ? artifact.path : artifact.source.basename
-          top_level_info_plists(Pathname.glob(dir/"**"/source/"Contents"/"Info.plist")).sort
+        info_plist_paths = [
+          *apps,
+          *keyboard_layouts,
+          *mdimporters,
+          *colorpickers,
+          *dictionaries,
+          *qlplugins,
+          *installers,
+          *screen_savers,
+        ].flat_map do |artifact|
+          sources = if artifact.is_a?(Cask::Artifact::Installer)
+            # Installers are sometimes contained within an `.app`, so try both.
+            installer_path = artifact.path
+            installer_path.ascend
+                          .select { |path| path == installer_path || path.extname == ".app" }
+                          .sort
+          else
+            [artifact.source.basename]
+          end
+
+          sources.flat_map do |source|
+            top_level_info_plists(Pathname.glob(dir/"**"/source/"Contents"/"Info.plist")).sort
+          end
         end
 
         info_plist_paths.each(&parse_info_plist)
@@ -104,7 +148,7 @@ module Homebrew
         pkg_paths = Pathname.glob(dir/"**"/"*.pkg").sort if pkg_paths.empty?
 
         pkg_paths.each do |pkg_path|
-          Dir.mktmpdir do |extract_dir|
+          Dir.mktmpdir("cask-checker", HOMEBREW_TEMP) do |extract_dir|
             extract_dir = Pathname(extract_dir)
             FileUtils.rmdir extract_dir
 
@@ -115,7 +159,7 @@ module Homebrew
             top_level_info_plist_paths.each(&parse_info_plist)
           ensure
             Cask::Utils.gain_permissions_remove(extract_dir)
-            extract_dir.mkpath
+            Pathname(extract_dir).mkpath
           end
         end
 
@@ -132,7 +176,7 @@ module Homebrew
         return
       end
 
-      Dir.mktmpdir do |dir|
+      Dir.mktmpdir("cask-checker", HOMEBREW_TEMP) do |dir|
         dir = Pathname(dir)
 
         installer.then do |i|
@@ -162,7 +206,7 @@ module Homebrew
             .plist
             .map { |package| package.fetch("Package") }
 
-          Dir.mktmpdir do |extract_dir|
+          Dir.mktmpdir("cask-checker", HOMEBREW_TEMP) do |extract_dir|
             extract_dir = Pathname(extract_dir)
             FileUtils.rmdir extract_dir
 
@@ -176,8 +220,8 @@ module Homebrew
             top_level_info_plist_paths = top_level_info_plists(Pathname.glob(extract_dir/"**/Contents/Info.plist"))
 
             unique_info_plist_versions =
-              top_level_info_plist_paths.map { |i| BundleVersion.from_info_plist(i)&.nice_version }
-                                        .compact.uniq
+              top_level_info_plist_paths.filter_map { |i| BundleVersion.from_info_plist(i)&.nice_version }
+                                        .uniq
             return unique_info_plist_versions.first if unique_info_plist_versions.count == 1
 
             package_info_path = extract_dir/"PackageInfo"
@@ -209,7 +253,7 @@ module Homebrew
                                  }.uniq
           ensure
             Cask::Utils.gain_permissions_remove(extract_dir)
-            extract_dir.mkpath
+            Pathname(extract_dir).mkpath
           end
         end
 

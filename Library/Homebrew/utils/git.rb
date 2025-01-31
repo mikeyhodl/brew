@@ -1,13 +1,14 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
+
+require "system_command"
 
 module Utils
   # Helper functions for querying Git information.
   #
-  # @see GitRepositoryExtension
-  # @api private
+  # @see GitRepository
   module Git
-    extend T::Sig
+    extend SystemCommand::Mixin
 
     def self.available?
       version.present?
@@ -82,7 +83,7 @@ module Utils
     }
     def self.last_revision_of_file(repo, file, before_commit: nil)
       relative_file = Pathname(file).relative_path_from(repo)
-      commit_hash = last_revision_commit_of_file(repo, relative_file, before_commit: before_commit)
+      commit_hash = last_revision_commit_of_file(repo, relative_file, before_commit:)
       file_at_commit(repo, file, commit_hash)
     end
 
@@ -118,10 +119,19 @@ module Utils
         ENV["GIT_COMMITTER_NAME"] = Homebrew::EnvConfig.git_name if committer
       end
 
-      return unless Homebrew::EnvConfig.git_email
+      if Homebrew::EnvConfig.git_committer_name && committer
+        ENV["GIT_COMMITTER_NAME"] = Homebrew::EnvConfig.git_committer_name
+      end
 
-      ENV["GIT_AUTHOR_EMAIL"] = Homebrew::EnvConfig.git_email if author
-      ENV["GIT_COMMITTER_EMAIL"] = Homebrew::EnvConfig.git_email if committer
+      if Homebrew::EnvConfig.git_email
+        ENV["GIT_AUTHOR_EMAIL"] = Homebrew::EnvConfig.git_email if author
+        ENV["GIT_COMMITTER_EMAIL"] = Homebrew::EnvConfig.git_email if committer
+      end
+
+      return unless committer
+      return unless Homebrew::EnvConfig.git_committer_email
+
+      ENV["GIT_COMMITTER_EMAIL"] = Homebrew::EnvConfig.git_committer_email
     end
 
     def self.setup_gpg!
@@ -148,7 +158,7 @@ module Utils
     def self.supports_partial_clone_sparse_checkout?
       # There is some support for partial clones prior to 2.20, but we avoid using it
       # due to performance issues
-      Version.create(version) >= Version.create("2.20.0")
+      Version.new(version) >= Version.new("2.20.0")
     end
   end
 end

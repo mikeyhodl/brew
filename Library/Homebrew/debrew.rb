@@ -1,13 +1,11 @@
-# typed: false
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "attrable"
 require "mutex_m"
-require "debrew/irb"
 require "ignorable"
 
 # Helper module for debugging formulae.
-#
-# @api private
 module Debrew
   extend Mutex_m
 
@@ -28,8 +26,6 @@ module Debrew
 
   # Module for displaying a debugging menu.
   class Menu
-    extend T::Sig
-
     Entry = Struct.new(:name, :action)
 
     attr_accessor :prompt, :entries
@@ -47,7 +43,7 @@ module Debrew
       menu = new
       yield menu
 
-      choice = nil
+      choice = T.let(nil, T.nilable(Entry))
       while choice.nil?
         menu.entries.each_with_index { |e, i| puts "#{i + 1}. #{e.name}" }
         print menu.prompt unless menu.prompt.nil?
@@ -77,7 +73,7 @@ module Debrew
   @debugged_exceptions = Set.new
 
   class << self
-    extend Predicable
+    extend Attrable
     attr_predicate :active?
     attr_reader :debugged_exceptions
   end
@@ -90,7 +86,7 @@ module Debrew
       yield
     rescue SystemExit
       raise
-    rescue Exception => e # rubocop:disable Lint/RescueException
+    rescue Ignorable::ExceptionMixin => e
       e.ignore if debug(e) == :ignore # execution jumps back to where the exception was thrown
     ensure
       Ignorable.unhook_raise
@@ -99,10 +95,10 @@ module Debrew
   end
 
   def self.debug(exception)
-    raise(exception) if !active? || !debugged_exceptions.add?(exception) || !try_lock
+    raise(exception) if !active? || !debugged_exceptions.add?(exception) || !mu_try_lock
 
     begin
-      puts exception.backtrace.first.to_s
+      puts exception.backtrace.first
       puts Formatter.error(exception, label: exception.class.name)
 
       loop do
@@ -119,7 +115,10 @@ module Debrew
               set_trace_func proc { |event, _, _, id, binding, klass|
                 if klass == Object && id == :raise && event == "return"
                   set_trace_func(nil)
-                  synchronize { IRB.start_within(binding) }
+                  mu_synchronize do
+                    require "debrew/irb"
+                    IRB.start_within(binding)
+                  end
                 end
               }
 
@@ -134,7 +133,7 @@ module Debrew
         end
       end
     ensure
-      unlock
+      mu_unlock
     end
   end
 end

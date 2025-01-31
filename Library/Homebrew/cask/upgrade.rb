@@ -1,14 +1,11 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 require "env_config"
 require "cask/config"
 
 module Cask
-  # @api private
   class Upgrade
-    extend T::Sig
-
     sig {
       params(
         casks:               Cask,
@@ -20,6 +17,7 @@ module Cask
         dry_run:             T.nilable(T::Boolean),
         skip_cask_deps:      T.nilable(T::Boolean),
         verbose:             T.nilable(T::Boolean),
+        quiet:               T.nilable(T::Boolean),
         binaries:            T.nilable(T::Boolean),
         quarantine:          T.nilable(T::Boolean),
         require_sha:         T.nilable(T::Boolean),
@@ -35,17 +33,19 @@ module Cask
       dry_run: false,
       skip_cask_deps: false,
       verbose: false,
+      quiet: false,
       binaries: nil,
       quarantine: nil,
       require_sha: nil
     )
-
       quarantine = true if quarantine.nil?
+
+      greedy = true if Homebrew::EnvConfig.upgrade_greedy?
 
       outdated_casks = if casks.empty?
         Caskroom.casks(config: Config.from_args(args)).select do |cask|
-          cask.outdated?(greedy: greedy, greedy_latest: greedy_latest,
-                         greedy_auto_updates: greedy_auto_updates)
+          cask.outdated?(greedy:, greedy_latest:,
+                         greedy_auto_updates:)
         end
       else
         casks.select do |cask|
@@ -54,17 +54,19 @@ module Cask
           if cask.outdated?(greedy: true)
             true
           elsif cask.version.latest?
-            opoo "Not upgrading #{cask.token}, the downloaded artifact has not changed"
+            opoo "Not upgrading #{cask.token}, the downloaded artifact has not changed" unless quiet
             false
           else
-            opoo "Not upgrading #{cask.token}, the latest version is already installed"
+            opoo "Not upgrading #{cask.token}, the latest version is already installed" unless quiet
             false
           end
         end
       end
 
       manual_installer_casks = outdated_casks.select do |cask|
-        cask.artifacts.any?(Artifact::Installer::ManualInstaller)
+        cask.artifacts.any? do |artifact|
+          artifact.is_a?(Artifact::Installer) && artifact.manual_install
+        end
       end
 
       if manual_installer_casks.present?
@@ -95,8 +97,7 @@ module Cask
       caught_exceptions = []
 
       upgradable_casks = outdated_casks.map do |c|
-        if !c.installed_caskfile.exist? && c.tap.to_s == "homebrew/cask" &&
-           Homebrew::API::Cask.all_casks.key?(c.token)
+        unless c.installed?
           odie <<~EOS
             The cask '#{c.token}' was affected by a bug and cannot be upgraded as-is. To fix this, run:
               brew reinstall --cask --force #{c.token}
@@ -114,11 +115,13 @@ module Cask
       upgradable_casks.each do |(old_cask, new_cask)|
         upgrade_cask(
           old_cask, new_cask,
-          binaries: binaries, force: force, skip_cask_deps: skip_cask_deps, verbose: verbose,
-          quarantine: quarantine, require_sha: require_sha
+          binaries:, force:, skip_cask_deps:, verbose:,
+          quarantine:, require_sha:
         )
       rescue => e
-        caught_exceptions << e.exception("#{new_cask.full_name}: #{e}")
+        new_exception = e.exception("#{new_cask.full_name}: #{e}")
+        new_exception.set_backtrace(e.backtrace)
+        caught_exceptions << new_exception
         next
       end
 
@@ -129,6 +132,18 @@ module Cask
       false
     end
 
+    sig {
+      params(
+        old_cask:       Cask,
+        new_cask:       Cask,
+        binaries:       T.nilable(T::Boolean),
+        force:          T.nilable(T::Boolean),
+        quarantine:     T.nilable(T::Boolean),
+        require_sha:    T.nilable(T::Boolean),
+        skip_cask_deps: T.nilable(T::Boolean),
+        verbose:        T.nilable(T::Boolean),
+      ).void
+    }
     def self.upgrade_cask(
       old_cask, new_cask,
       binaries:, force:, quarantine:, require_sha:, skip_cask_deps:, verbose:
@@ -140,9 +155,9 @@ module Cask
       old_config = old_cask.config
 
       old_options = {
-        binaries: binaries,
-        verbose:  verbose,
-        force:    force,
+        binaries:,
+        verbose:,
+        force:,
         upgrade:  true,
       }.compact
 
@@ -152,13 +167,13 @@ module Cask
       new_cask.config = new_cask.default_config.merge(old_config)
 
       new_options = {
-        binaries:       binaries,
-        verbose:        verbose,
-        force:          force,
-        skip_cask_deps: skip_cask_deps,
-        require_sha:    require_sha,
+        binaries:,
+        verbose:,
+        force:,
+        skip_cask_deps:,
+        require_sha:,
         upgrade:        true,
-        quarantine:     quarantine,
+        quarantine:,
       }.compact
 
       new_cask_installer =
@@ -180,22 +195,22 @@ module Cask
         new_cask_installer.fetch
 
         # Move the old cask's artifacts back to staging
-        old_cask_installer.start_upgrade
+        old_cask_installer.start_upgrade(successor: new_cask)
         # And flag it so in case of error
         started_upgrade = true
 
         # Install the new cask
         new_cask_installer.stage
 
-        new_cask_installer.install_artifacts
+        new_cask_installer.install_artifacts(predecessor: old_cask)
         new_artifacts_installed = true
 
-        # If successful, wipe the old cask from staging
+        # If successful, wipe the old cask from staging.
         old_cask_installer.finalize_upgrade
       rescue => e
-        new_cask_installer.uninstall_artifacts if new_artifacts_installed
+        new_cask_installer.uninstall_artifacts(successor: old_cask) if new_artifacts_installed
         new_cask_installer.purge_versioned_files
-        old_cask_installer.revert_upgrade if started_upgrade
+        old_cask_installer.revert_upgrade(predecessor: new_cask) if started_upgrade
         raise e
       end
 

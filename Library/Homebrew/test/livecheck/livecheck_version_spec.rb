@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "livecheck/livecheck_version"
 
-describe Homebrew::Livecheck::LivecheckVersion do
+RSpec.describe Homebrew::Livecheck::LivecheckVersion do
   let(:formula) { instance_double(Formula) }
   let(:cask) { instance_double(Cask::Cask) }
   let(:resource) { instance_double(Resource) }

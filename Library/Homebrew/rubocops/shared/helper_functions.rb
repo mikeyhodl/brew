@@ -1,4 +1,4 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "rubocop"
@@ -11,10 +11,7 @@ end
 module RuboCop
   module Cop
     # Helper functions for cops.
-    #
-    # @api private
     module HelperFunctions
-      extend T::Sig
       include RangeHelp
 
       # Checks for regex match of pattern in the node and
@@ -110,7 +107,7 @@ module RuboCop
         return if node.nil?
 
         node.each_child_node(:send) do |method_node|
-          next unless method_node.method_name == method_name
+          next if method_node.method_name != method_name
 
           @offensive_node = method_node
           return method_node
@@ -177,10 +174,19 @@ module RuboCop
 
       # Matches a method with a receiver. Yields to a block with matching method node.
       #
-      # @example to match `Formula.factory(name)`
-      #   find_instance_method_call(node, "Formula", :factory)
-      # @example to match `build.head?`
-      #   find_instance_method_call(node, :build, :head?)
+      # ### Examples
+      #
+      # Match `Formula.factory(name)`.
+      #
+      # ```ruby
+      # find_instance_method_call(node, "Formula", :factory)
+      # ```
+      #
+      # Match `build.head?`.
+      #
+      # ```ruby
+      # find_instance_method_call(node, :build, :head?)
+      # ```
       def find_instance_method_call(node, instance, method_name)
         methods = find_every_method_call_by_name(node, method_name)
         methods.each do |method|
@@ -197,8 +203,13 @@ module RuboCop
 
       # Matches receiver part of method. Yields to a block with parent node of receiver.
       #
-      # @example to match `ARGV.<whatever>()`
-      #   find_instance_call(node, "ARGV")
+      # ### Example
+      #
+      # Match `ARGV.<whatever>()`.
+      #
+      # ```ruby
+      # find_instance_call(node, "ARGV")
+      # ```
       def find_instance_call(node, name)
         node.each_descendant(:send) do |method_node|
           next if method_node.receiver.nil?
@@ -218,7 +229,7 @@ module RuboCop
         return if node.nil?
 
         node.each_descendant(:const) do |const_node|
-          next unless const_node.const_name == const_name
+          next if const_node.const_name != const_name
 
           @offensive_node = const_node
           yield const_node if block_given?
@@ -291,7 +302,7 @@ module RuboCop
       def block_method_called_in_block?(node, method_name)
         node.body.each_child_node do |call_node|
           next if !call_node.block_type? && !call_node.send_type?
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           @offensive_node = call_node
           return true
@@ -307,7 +318,7 @@ module RuboCop
           return true
         end
         node.each_child_node(:send) do |call_node|
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           offending_node(call_node)
           return true
@@ -318,7 +329,7 @@ module RuboCop
       # Check if method_name is called among every descendant node of given node.
       def method_called_ever?(node, method_name)
         node.each_descendant(:send) do |call_node|
-          next unless call_node.method_name == method_name
+          next if call_node.method_name != method_name
 
           @offensive_node = call_node
           return true

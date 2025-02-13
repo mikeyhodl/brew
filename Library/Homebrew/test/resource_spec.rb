@@ -1,10 +1,9 @@
-# typed: false
 # frozen_string_literal: true
 
 require "resource"
 require "livecheck"
 
-describe Resource do
+RSpec.describe Resource do
   subject(:resource) { described_class.new("test") }
 
   let(:livecheck_resource) do
@@ -66,19 +65,19 @@ describe Resource do
   end
 
   describe "#livecheck" do
-    specify "when livecheck block is set" do
+    specify "when `livecheck` block is set" do
       expect(livecheck_resource.livecheck.url).to eq("https://brew.sh/test/releases")
       expect(livecheck_resource.livecheck.regex).to eq(/foo[._-]v?(\d+(?:\.\d+)+)\.t/i)
     end
   end
 
-  describe "#livecheckable?" do
-    it "returns false if livecheck block is not set in resource" do
-      expect(resource.livecheckable?).to be false
+  describe "#livecheck_defined?" do
+    it "returns false if `livecheck` block is not set in resource" do
+      expect(resource.livecheck_defined?).to be false
     end
 
-    specify "livecheck block defined in resources" do
-      expect(livecheck_resource.livecheckable?).to be true
+    specify "`livecheck` block defined in resources" do
+      expect(livecheck_resource.livecheck_defined?).to be true
     end
   end
 
@@ -144,7 +143,7 @@ describe Resource do
 
   describe "#download_strategy" do
     it "returns the download strategy" do
-      strategy = Object.new
+      strategy = Class.new(AbstractDownloadStrategy)
       expect(DownloadStrategyDetector)
         .to receive(:detect).with("foo", nil).and_return(strategy)
       resource.url("foo")

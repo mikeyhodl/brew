@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "livecheck/strategy"
 
-describe Homebrew::Livecheck::Strategy::Bitbucket do
+RSpec.describe Homebrew::Livecheck::Strategy::Bitbucket do
   subject(:bitbucket) { described_class }
 
   let(:bitbucket_urls) do
@@ -18,7 +17,7 @@ describe Homebrew::Livecheck::Strategy::Bitbucket do
     {
       get:       {
         url:   "https://bitbucket.org/abc/def/downloads/?tab=tags",
-        regex: /href=.*?v?(\d+(?:\.\d+)+)\.t/i,
+        regex: /<td[^>]*?class="name"[^>]*?>\s*v?(\d+(?:\.\d+)+)\s*?</im,
       },
       downloads: {
         url:   "https://bitbucket.org/abc/def/downloads/",

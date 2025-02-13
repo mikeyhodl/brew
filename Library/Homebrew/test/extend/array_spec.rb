@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "extend/array"
 
-describe Array do
+RSpec.describe Array do
   describe ".to_sentence" do
     it "converts a plain array to a sentence" do
       expect([].to_sentence).to eq("")

@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "livecheck/strategy/hackage"
 
-describe Homebrew::Livecheck::Strategy::Hackage do
+RSpec.describe Homebrew::Livecheck::Strategy::Hackage do
   subject(:hackage) { described_class }
 
   let(:hackage_urls) do

@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "cask/uninstall"
 
-describe Cask::Uninstall, :cask do
+RSpec.describe Cask::Uninstall, :cask do
   it "displays the uninstallation progress" do
     caffeine = Cask::CaskLoader.load(cask_path("local-caffeine"))
 
@@ -61,7 +60,7 @@ describe Cask::Uninstall, :cask do
 
     expect(cask).to be_installed
 
-    cask.config.appdir.join("MyFancyApp.app").rmtree
+    FileUtils.rm_r(cask.config.appdir.join("MyFancyApp.app"))
 
     expect { described_class.uninstall_casks(cask) }
       .to raise_error(Cask::CaskError, /uninstall script .* does not exist/)
@@ -113,14 +112,6 @@ describe Cask::Uninstall, :cask do
       expect(caskroom_path.join(first_installed_version)).not_to exist
       expect(caskroom_path).not_to exist
     end
-
-    it "displays a message when versions remain installed" do
-      expect do
-        expect do
-          described_class.uninstall_casks(Cask::Cask.new("versioned-cask"))
-        end.not_to output.to_stderr
-      end.to output(/#{token} #{first_installed_version} is still installed./).to_stdout
-    end
   end
 
   context "when Casks in Taps have been renamed or removed" do
@@ -133,7 +124,7 @@ describe Cask::Uninstall, :cask do
     before do
       app.tap(&:mkpath)
          .join("Contents").tap(&:mkpath)
-         .join("Info.plist").tap(&FileUtils.method(:touch))
+         .join("Info.plist").tap { FileUtils.touch(_1) }
 
       caskroom_path.mkpath
 

@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "livecheck/strategy/gnu"
 
-describe Homebrew::Livecheck::Strategy::Gnu do
+RSpec.describe Homebrew::Livecheck::Strategy::Gnu do
   subject(:gnu) { described_class }
 
   let(:gnu_urls) do

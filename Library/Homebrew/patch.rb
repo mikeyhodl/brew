@@ -1,12 +1,10 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "resource"
 require "erb"
 
 # Helper module for creating patches.
-#
-# @api private
 module Patch
   def self.create(strip, src, &block)
     case strip
@@ -32,11 +30,7 @@ module Patch
 end
 
 # An abstract class representing a patch embedded into a formula.
-#
-# @api private
 class EmbeddedPatch
-  extend T::Sig
-
   attr_writer :owner
   attr_reader :strip
 
@@ -64,11 +58,7 @@ class EmbeddedPatch
 end
 
 # A patch at the `__END__` of a formula file.
-#
-# @api private
 class DATAPatch < EmbeddedPatch
-  extend T::Sig
-
   attr_accessor :path
 
   def initialize(strip)
@@ -82,7 +72,7 @@ class DATAPatch < EmbeddedPatch
     path.open("rb") do |f|
       loop do
         line = f.gets
-        break if line.nil? || line =~ /^__END__$/
+        break if line.nil? || /^__END__$/.match?(line)
       end
       while (line = f.gets)
         data << line
@@ -93,8 +83,6 @@ class DATAPatch < EmbeddedPatch
 end
 
 # A string containing a patch.
-#
-# @api private
 class StringPatch < EmbeddedPatch
   def initialize(strip, str)
     super(strip)
@@ -106,12 +94,8 @@ class StringPatch < EmbeddedPatch
   end
 end
 
-# A string containing a patch.
-#
-# @api private
+# A file containing a patch.
 class ExternalPatch
-  extend T::Sig
-
   extend Forwardable
 
   attr_reader :resource, :strip
@@ -122,7 +106,7 @@ class ExternalPatch
 
   def initialize(strip, &block)
     @strip    = strip
-    @resource = Resource::PatchResource.new(&block)
+    @resource = Resource::Patch.new(&block)
   end
 
   sig { returns(T::Boolean) }
@@ -131,8 +115,8 @@ class ExternalPatch
   end
 
   def owner=(owner)
-    resource.owner   = owner
-    resource.version = resource.checksum || ERB::Util.url_encode(resource.url)
+    resource.owner = owner
+    resource.version(resource.checksum&.hexdigest || ERB::Util.url_encode(resource.url))
   end
 
   def apply
@@ -156,11 +140,17 @@ class ExternalPatch
         patch_files.each do |patch_file|
           ohai "Applying #{patch_file}"
           patch_file = patch_dir/patch_file
-          safe_system "patch", "-g", "0", "-f", "-#{strip}", "-i", patch_file
+          Utils.safe_popen_write("patch", "-g", "0", "-f", "-#{strip}") do |p|
+            File.foreach(patch_file) do |line|
+              data = line.gsub("@@HOMEBREW_PREFIX@@", HOMEBREW_PREFIX)
+              p.write(data)
+            end
+          end
         end
       end
     end
   rescue ErrorDuringExecution => e
+    onoe e
     f = resource.owner.owner
     cmd, *args = e.cmd
     raise BuildError.new(f, cmd, args, ENV.to_hash)

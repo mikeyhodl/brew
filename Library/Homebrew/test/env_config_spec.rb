@@ -1,10 +1,15 @@
-# typed: false
 # frozen_string_literal: true
 
 require "diagnostic"
 
-describe Homebrew::EnvConfig do
+RSpec.describe Homebrew::EnvConfig do
   subject(:env_config) { described_class }
+
+  describe "ENVS" do
+    it "sorts alphabetically" do
+      expect(env_config::ENVS.keys).to eql(env_config::ENVS.keys.sort)
+    end
+  end
 
   describe ".env_method_name" do
     it "generates method names" do

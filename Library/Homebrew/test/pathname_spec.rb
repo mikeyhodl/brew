@@ -1,10 +1,9 @@
-# typed: false
 # frozen_string_literal: true
 
 require "extend/pathname"
 require "install_renamed"
 
-describe Pathname do
+RSpec.describe Pathname do
   include FileUtils
 
   let(:src) { mktmpdir }

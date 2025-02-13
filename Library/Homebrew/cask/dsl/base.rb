@@ -1,13 +1,12 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 require "cask/utils"
+require "extend/on_system"
 
 module Cask
   class DSL
     # Superclass for all stanzas which take a block.
-    #
-    # @api private
     class Base
       extend Forwardable
 
@@ -16,7 +15,7 @@ module Cask
         @command = command
       end
 
-      def_delegators :@cask, :token, :version, :caskroom_path, :staged_path, :appdir, :language
+      def_delegators :@cask, :token, :version, :caskroom_path, :staged_path, :appdir, :language, :arch
 
       def system_command(executable, **options)
         @command.run!(executable, **options)

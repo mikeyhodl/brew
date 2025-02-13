@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "livecheck/strategy"
 
-describe Homebrew::Livecheck::Strategy::Json do
+RSpec.describe Homebrew::Livecheck::Strategy::Json do
   subject(:json) { described_class }
 
   let(:http_url) { "https://brew.sh/blog/" }
@@ -55,7 +54,7 @@ describe Homebrew::Livecheck::Strategy::Json do
         "1.0.1" => Version.new("1.0.1"),
         "1.0.0" => Version.new("1.0.0"),
       },
-      regex:   regex,
+      regex:,
       url:     http_url,
     }
   end
@@ -108,11 +107,6 @@ describe Homebrew::Livecheck::Strategy::Json do
       expect(json.versions_from_content(content_simple, regex) { next }).to eq([])
     end
 
-    it "errors if a block uses two arguments but a regex is not given" do
-      expect { json.versions_from_content(content_simple) { |json, regex| json["version"][regex, 1] } }
-        .to raise_error("Two arguments found in `strategy` block but no regex provided.")
-    end
-
     it "errors on an invalid return type from a block" do
       expect { json.versions_from_content(content_simple, regex) { 123 } }
         .to raise_error(TypeError, Homebrew::Livecheck::Strategy::INVALID_BLOCK_RETURN_VALUE_MSG)
@@ -121,17 +115,17 @@ describe Homebrew::Livecheck::Strategy::Json do
 
   describe "::find_versions?" do
     it "finds versions in provided_content using a block" do
-      expect(json.find_versions(url: http_url, regex: regex, provided_content: content) do |json, regex|
+      expect(json.find_versions(url: http_url, regex:, provided_content: content) do |json, regex|
         json["versions"].select { |item| item["version"]&.match?(regex) }
                         .map { |item| item["version"][regex, 1] }
       end).to eq(find_versions_cached_return_hash)
 
       # NOTE: A regex should be provided using the `#regex` method in a
-      # `livecheck` block but we're using a regex literal in the `strategy`
-      # block here simply to ensure this method works as expected when a
-      # regex isn't provided.
+      #       `livecheck` block but we're using a regex literal in the `strategy`
+      #       block here simply to ensure this method works as expected when a
+      #       regex isn't provided.
       expect(json.find_versions(url: http_url, provided_content: content) do |json|
-        regex = /^v?(\d+(?:\.\d+)+)$/i.freeze
+        regex = /^v?(\d+(?:\.\d+)+)$/i
         json["versions"].select { |item| item["version"]&.match?(regex) }
                         .map { |item| item["version"][regex, 1] }
       end).to eq(find_versions_cached_return_hash.merge({ regex: nil }))

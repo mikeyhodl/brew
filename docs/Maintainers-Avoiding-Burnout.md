@@ -1,3 +1,7 @@
+---
+last_review_date: "2025-02-08"
+---
+
 # Maintainers: Avoiding Burnout
 
 **This guide is for maintainers.** These special people have **write
@@ -43,6 +47,14 @@ questions and PRs we won't accept. These should be closed out as soon as we
 realise that they aren't going to be resolved or merged. This is kinder than
 deciding this after a long period of review. Our issue tracker should reflect
 work to be done.
+
+## 5. Slow Down
+
+We're a volunteer-run open source project used by a lot of people. That can mean
+that it feels like there's a lot of pressure to get a fix, package or project
+completed ASAP. Try to not feel this pressure; slow down, focus on Homebrew
+being enjoyable. If in doubt: over-communicate your decision making. A revert
+can always be done now and a proper fix done tomorrow.
 
 ---
 

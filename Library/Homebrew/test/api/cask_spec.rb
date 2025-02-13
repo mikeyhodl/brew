@@ -1,15 +1,12 @@
-# typed: false
 # frozen_string_literal: true
 
 require "api"
 
-describe Homebrew::API::Cask do
+RSpec.describe Homebrew::API::Cask do
   let(:cache_dir) { mktmpdir }
 
   before do
     stub_const("Homebrew::API::HOMEBREW_CACHE_API", cache_dir)
-    Homebrew::API.clear_cache
-    described_class.clear_cache
   end
 
   def mock_curl_download(stdout:)
@@ -47,13 +44,29 @@ describe Homebrew::API::Cask do
     end
   end
 
-  describe "::fetch_source" do
-    it "fetches the source of a cask (defaulting to master when no `git_head` is passed)" do
-      curl_output = instance_double(SystemCommand::Result, stdout: "foo", success?: true)
-      expect(Utils::Curl).to receive(:curl_output)
-        .with("--fail", "https://raw.githubusercontent.com/Homebrew/homebrew-cask/master/Casks/foo.rb")
-        .and_return(curl_output)
-      described_class.fetch_source("foo", git_head: nil)
+  describe "::source_download", :needs_macos do
+    let(:cask) do
+      cask = Cask::CaskLoader::FromAPILoader.new(
+        "everything",
+        from_json: JSON.parse((TEST_FIXTURE_DIR/"cask/everything.json").read.strip),
+      ).load(config: nil)
+      cask
+    end
+
+    before do
+      allow_any_instance_of(Homebrew::API::Download).to receive(:fetch)
+      allow_any_instance_of(Homebrew::API::Download).to receive(:symlink_location).and_return(
+        TEST_FIXTURE_DIR/"cask/Casks/everything.rb",
+      )
+    end
+
+    it "specifies the correct URL and sha256" do
+      expect(Homebrew::API::Download).to receive(:new).with(
+        "https://raw.githubusercontent.com/Homebrew/homebrew-cask/abcdef1234567890abcdef1234567890abcdef12/Casks/everything.rb",
+        Checksum.new("d8d0d6b2e5ff65388eccb82236fd3aa157b4a29bb043a1f72b97f0e9b70e8320"),
+        any_args,
+      ).and_call_original
+      described_class.source_download(cask)
     end
   end
 end

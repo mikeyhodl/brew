@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -16,8 +16,6 @@ module Homebrew
       #
       # @api public
       class PageMatch
-        extend T::Sig
-
         NICE_NAME = "Page match"
 
         # A priority of zero causes livecheck to skip the strategy. We do this
@@ -26,7 +24,7 @@ module Homebrew
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://}i.freeze
+        URL_MATCH_REGEX = %r{^https?://}i
 
         # Whether the strategy can be applied to the provided URL.
         # {PageMatch} will technically match any HTTP URL but is only
@@ -51,7 +49,7 @@ module Homebrew
           params(
             content: String,
             regex:   T.nilable(Regexp),
-            block:   T.untyped,
+            block:   T.nilable(Proc),
           ).returns(T::Array[String])
         }
         def self.versions_from_content(content, regex, &block)
@@ -62,14 +60,14 @@ module Homebrew
 
           return [] if regex.blank?
 
-          content.scan(regex).map do |match|
+          content.scan(regex).filter_map do |match|
             case match
             when String
               match
             when Array
               match.first
             end
-          end.compact.uniq
+          end.uniq
         end
 
         # Checks the content at the URL for new versions, using the provided
@@ -87,23 +85,29 @@ module Homebrew
             regex:            T.nilable(Regexp),
             provided_content: T.nilable(String),
             homebrew_curl:    T::Boolean,
-            _unused:          T.nilable(T::Hash[Symbol, T.untyped]),
-            block:            T.untyped,
+            unused:           T.untyped,
+            block:            T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
-        def self.find_versions(url:, regex: nil, provided_content: nil, homebrew_curl: false, **_unused, &block)
+        def self.find_versions(url:, regex: nil, provided_content: nil, homebrew_curl: false, **unused, &block)
           if regex.blank? && block.blank?
             raise ArgumentError, "#{Utils.demodulize(T.must(name))} requires a regex or `strategy` block"
           end
 
-          match_data = { matches: {}, regex: regex, url: url }
+          match_data = { matches: {}, regex:, url: }
           return match_data if url.blank? || (regex.blank? && block.blank?)
 
           content = if provided_content.is_a?(String)
             match_data[:cached] = true
             provided_content
           else
-            match_data.merge!(Strategy.page_content(url, homebrew_curl: homebrew_curl))
+            match_data.merge!(
+              Strategy.page_content(
+                url,
+                url_options:   unused.fetch(:url_options, {}),
+                homebrew_curl:,
+              ),
+            )
             match_data[:content]
           end
           return match_data if content.blank?

@@ -1,11 +1,10 @@
-# typed: false
 # frozen_string_literal: true
 
 require "requirements/codesign_requirement"
 
-describe CodesignRequirement do
+RSpec.describe CodesignRequirement do
   subject(:requirement) do
-    described_class.new([{ identity: identity, with: with, url: url }])
+    described_class.new([{ identity:, with:, url: }])
   end
 
   let(:identity) { "lldb_codesign" }

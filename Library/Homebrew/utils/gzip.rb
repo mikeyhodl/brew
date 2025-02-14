@@ -1,16 +1,12 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
-
-# Apple's gzip also uses zlib so use the same buffer size here.
-# https://github.com/apple-oss-distributions/file_cmds/blob/file_cmds-400/gzip/gzip.c#L147
-GZIP_BUFFER_SIZE = 64 * 1024
 
 module Utils
   # Helper functions for creating gzip files.
   module Gzip
-    extend T::Sig
-
-    module_function
+    # Apple's gzip also uses zlib so use the same buffer size here.
+    # https://github.com/apple-oss-distributions/file_cmds/blob/file_cmds-400/gzip/gzip.c#L147
+    GZIP_BUFFER_SIZE = T.let(64 * 1024, Integer)
 
     sig {
       params(
@@ -20,8 +16,8 @@ module Utils
         output:    T.any(String, Pathname),
       ).returns(Pathname)
     }
-    def compress_with_options(path, mtime: ENV["SOURCE_DATE_EPOCH"].to_i, orig_name: File.basename(path),
-                              output: "#{path}.gz")
+    def self.compress_with_options(path, mtime: ENV["SOURCE_DATE_EPOCH"].to_i, orig_name: File.basename(path),
+                                   output: "#{path}.gz")
       # Ideally, we would just set mtime = 0 if SOURCE_DATE_EPOCH is absent, but Ruby's
       # Zlib::GzipWriter does not properly handle the case of setting mtime = 0:
       # https://bugs.ruby-lang.org/issues/16285
@@ -55,10 +51,10 @@ module Utils
         mtime:        T.any(Integer, Time),
       ).returns(T::Array[Pathname])
     }
-    def compress(*paths, reproducible: true, mtime: ENV["SOURCE_DATE_EPOCH"].to_i)
+    def self.compress(*paths, reproducible: true, mtime: ENV["SOURCE_DATE_EPOCH"].to_i)
       if reproducible
         paths.map do |path|
-          compress_with_options(path, mtime: mtime)
+          compress_with_options(path, mtime:)
         end
       else
         paths.map do |path|

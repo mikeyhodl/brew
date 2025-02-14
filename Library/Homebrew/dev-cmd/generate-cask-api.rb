@@ -1,67 +1,84 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
-require "cli/parser"
+require "abstract_command"
 require "cask/cask"
+require "fileutils"
+require "formula"
 
 module Homebrew
-  extend T::Sig
-
-  module_function
-
-  sig { returns(CLI::Parser) }
-  def generate_cask_api_args
-    Homebrew::CLI::Parser.new do
-      description <<~EOS
-        Generates Cask API data files for formulae.brew.sh.
-
-        The generated files are written to the current directory.
+  module DevCmd
+    class GenerateCaskApi < AbstractCommand
+      CASK_JSON_TEMPLATE = <<~EOS
+        ---
+        layout: cask_json
+        ---
+        {{ content }}
       EOS
 
-      named_args :none
-    end
-  end
+      cmd_args do
+        description <<~EOS
+          Generate `homebrew/cask` API data files for <#{HOMEBREW_API_WWW}>.
+          The generated files are written to the current directory.
+        EOS
 
-  CASK_JSON_TEMPLATE = <<~EOS
-    ---
-    layout: cask_json
-    ---
-    {{ content }}
-  EOS
+        switch "-n", "--dry-run", description: "Generate API data without writing it to files."
 
-  def html_template(title)
-    <<~EOS
-      ---
-      title: #{title}
-      layout: cask
-      ---
-      {{ content }}
-    EOS
-  end
+        named_args :none
+      end
 
-  def generate_cask_api
-    generate_cask_api_args.parse
+      sig { override.void }
+      def run
+        tap = CoreCaskTap.instance
+        raise TapUnavailableError, tap.name unless tap.installed?
 
-    tap = Tap.default_cask_tap
+        unless args.dry_run?
+          directories = ["_data/cask", "api/cask", "api/cask-source", "cask", "api/internal/v3"].freeze
+          FileUtils.rm_rf directories
+          FileUtils.mkdir_p directories
+        end
 
-    directories = ["_data/cask", "api/cask", "api/cask-source", "cask"].freeze
-    FileUtils.rm_rf directories
-    FileUtils.mkdir_p directories
+        Homebrew.with_no_api_env do
+          tap_migrations_json = JSON.dump(tap.tap_migrations)
+          File.write("api/cask_tap_migrations.json", tap_migrations_json) unless args.dry_run?
 
-    Cask::Cask.generating_hash!
+          Cask::Cask.generating_hash!
 
-    tap.cask_files.each do |path|
-      cask = Cask::CaskLoader.load(path)
-      name = cask.token
-      json = JSON.pretty_generate(cask.to_hash_with_variations)
+          tap.cask_files.each do |path|
+            cask = Cask::CaskLoader.load(path)
+            name = cask.token
+            json = JSON.pretty_generate(cask.to_hash_with_variations)
+            cask_source = path.read
+            html_template_name = html_template(name)
 
-      File.write("_data/cask/#{name}.json", "#{json}\n")
-      File.write("api/cask/#{name}.json", CASK_JSON_TEMPLATE)
-      File.write("api/cask-source/#{name}.rb", path.read)
-      File.write("cask/#{name}.html", html_template(name))
-    rescue
-      onoe "Error while generating data for cask '#{path.stem}'."
-      raise
+            unless args.dry_run?
+              File.write("_data/cask/#{name.tr("+", "_")}.json", "#{json}\n")
+              File.write("api/cask/#{name}.json", CASK_JSON_TEMPLATE)
+              File.write("api/cask-source/#{name}.rb", cask_source)
+              File.write("cask/#{name}.html", html_template_name)
+            end
+          rescue
+            onoe "Error while generating data for cask '#{path.stem}'."
+            raise
+          end
+
+          canonical_json = JSON.pretty_generate(tap.cask_renames)
+          File.write("_data/cask_canonical.json", "#{canonical_json}\n") unless args.dry_run?
+        end
+      end
+
+      private
+
+      sig { params(title: String).returns(String) }
+      def html_template(title)
+        <<~EOS
+          ---
+          title: '#{title}'
+          layout: cask
+          ---
+          {{ content }}
+        EOS
+      end
     end
   end
 end

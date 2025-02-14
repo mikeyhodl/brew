@@ -1,12 +1,8 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # A requirement on a code-signing identity.
-#
-# @api private
 class CodesignRequirement < Requirement
-  extend T::Sig
-
   fatal true
 
   def initialize(tags)
@@ -17,7 +13,7 @@ class CodesignRequirement < Requirement
     @identity = options.fetch(:identity)
     @with = options.fetch(:with, "code signing")
     @url = options.fetch(:url, nil)
-    super(tags)
+    super
   end
 
   satisfy(build_env: false) do

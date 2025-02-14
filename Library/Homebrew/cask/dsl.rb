@@ -1,6 +1,7 @@
-# typed: true
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
+require "attrable"
 require "locale"
 require "lazy_object"
 require "livecheck"
@@ -11,7 +12,6 @@ require "cask/artifact_set"
 require "cask/caskroom"
 require "cask/exceptions"
 
-require "cask/dsl/appcast"
 require "cask/dsl/base"
 require "cask/dsl/caveats"
 require "cask/dsl/conflicts_with"
@@ -30,8 +30,6 @@ require "extend/on_system"
 
 module Cask
   # Class representing the domain-specific language used for casks.
-  #
-  # @api private
   class DSL
     ORDINARY_ARTIFACT_CLASSES = [
       Artifact::Installer,
@@ -44,6 +42,7 @@ module Cask
       Artifact::Font,
       Artifact::InputMethod,
       Artifact::InternetPlugin,
+      Artifact::KeyboardLayout,
       Artifact::Manpage,
       Artifact::Pkg,
       Artifact::Prefpane,
@@ -68,6 +67,7 @@ module Cask
 
     DSL_METHODS = Set.new([
       :appcast,
+      :arch,
       :artifacts,
       :auto_updates,
       :caveats,
@@ -83,27 +83,51 @@ module Cask
       :url,
       :version,
       :appdir,
-      :discontinued?,
+      :deprecate!,
+      :deprecated?,
+      :deprecation_date,
+      :deprecation_reason,
+      :deprecation_replacement,
+      :disable!,
+      :disabled?,
+      :disable_date,
+      :disable_reason,
+      :disable_replacement,
+      :discontinued?, # TODO: remove once discontinued? is removed (4.5.0)
       :livecheck,
-      :livecheckable?,
+      :livecheck_defined?,
+      :livecheckable?, # TODO: remove once `#livecheckable?` is removed
       :on_system_blocks_exist?,
+      :on_system_block_min_os,
+      :depends_on_set_in_block?,
       *ORDINARY_ARTIFACT_CLASSES.map(&:dsl_key),
       *ACTIVATABLE_ARTIFACT_CLASSES.map(&:dsl_key),
       *ARTIFACT_BLOCK_CLASSES.flat_map { |klass| [klass.dsl_key, klass.uninstall_dsl_key] },
     ]).freeze
 
-    extend Predicable
+    extend Attrable
     include OnSystem::MacOSOnly
 
-    attr_reader :cask, :token
+    attr_reader :cask, :token, :deprecation_date, :deprecation_reason, :deprecation_replacement, :disable_date,
+                :disable_reason, :disable_replacement, :on_system_block_min_os
 
-    attr_predicate :on_system_blocks_exist?
+    attr_predicate :deprecated?, :disabled?, :livecheck_defined?, :on_system_blocks_exist?, :depends_on_set_in_block?
 
     def initialize(cask)
       @cask = cask
       @token = cask.token
     end
 
+    # Specifies the cask's name.
+    #
+    # NOTE: Multiple names can be specified.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # name "Visual Studio Code"
+    # ```
+    #
     # @api public
     def name(*args)
       @name ||= []
@@ -112,32 +136,48 @@ module Cask
       @name.concat(args.flatten)
     end
 
+    # Describes the cask.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # desc "Open-source code editor"
+    # ```
+    #
     # @api public
     def desc(description = nil)
       set_unique_stanza(:desc, description.nil?) { description }
     end
 
     def set_unique_stanza(stanza, should_return)
-      return instance_variable_get("@#{stanza}") if should_return
+      return instance_variable_get(:"@#{stanza}") if should_return
 
       unless @cask.allow_reassignment
-        if instance_variable_defined?("@#{stanza}") && !@called_in_on_system_block
+        if instance_variable_defined?(:"@#{stanza}") && !@called_in_on_system_block
           raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only appear once.")
         end
 
-        if instance_variable_defined?("@#{stanza}_set_in_block") && @called_in_on_system_block
+        if instance_variable_defined?(:"@#{stanza}_set_in_block") && @called_in_on_system_block
           raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only be overridden once.")
         end
       end
 
-      instance_variable_set("@#{stanza}_set_in_block", true) if @called_in_on_system_block
-      instance_variable_set("@#{stanza}", yield)
+      instance_variable_set(:"@#{stanza}_set_in_block", true) if @called_in_on_system_block
+      instance_variable_set(:"@#{stanza}", yield)
     rescue CaskInvalidError
       raise
     rescue => e
       raise CaskInvalidError.new(cask, "'#{stanza}' stanza failed with: #{e}")
     end
 
+    # Sets the cask's homepage.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # homepage "https://code.visualstudio.com/"
+    # ```
+    #
     # @api public
     def homepage(homepage = nil)
       set_unique_stanza(:homepage, homepage.nil?) { homepage }
@@ -170,12 +210,11 @@ module Cask
       raise CaskInvalidError.new(cask, "No default language specified.") if @language_blocks.default.nil?
 
       locales = cask.config.languages
-                    .map do |language|
+                    .filter_map do |language|
                       Locale.parse(language)
                     rescue Locale::ParserError
                       nil
                     end
-                    .compact
 
       locales.each do |locale|
         key = locale.detect(@language_blocks.keys)
@@ -194,24 +233,43 @@ module Cask
       @language_blocks.keys.flatten
     end
 
+    # Sets the cask's download URL.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # url "https://update.code.visualstudio.com/#{version}/#{arch}/stable"
+    # ```
+    #
     # @api public
     def url(*args, **options, &block)
       caller_location = T.must(caller_locations).fetch(0)
 
       set_unique_stanza(:url, args.empty? && options.empty? && !block) do
         if block
-          URL.new(*args, **options, caller_location: caller_location, dsl: self, &block)
+          URL.new(*args, **options, caller_location:, dsl: self, &block)
         else
-          URL.new(*args, **options, caller_location: caller_location)
+          URL.new(*args, **options, caller_location:)
         end
       end
     end
 
-    # @api public
-    def appcast(*args, **kwargs)
-      set_unique_stanza(:appcast, args.empty? && kwargs.empty?) { DSL::Appcast.new(*args, **kwargs) }
-    end
-
+    # Sets the cask's container type or nested container path.
+    #
+    # ### Examples
+    #
+    # The container is a nested disk image:
+    #
+    # ```ruby
+    # container nested: "orca-#{version}.dmg"
+    # ```
+    #
+    # The container should not be unarchived:
+    #
+    # ```ruby
+    # container type: :naked
+    # ```
+    #
     # @api public
     def container(**kwargs)
       set_unique_stanza(:container, kwargs.empty?) do
@@ -219,6 +277,15 @@ module Cask
       end
     end
 
+    # Sets the cask's version.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # version "1.88.1"
+    # ```
+    #
+    # @see DSL::Version
     # @api public
     def version(arg = nil)
       set_unique_stanza(:version, arg.nil?) do
@@ -230,6 +297,23 @@ module Cask
       end
     end
 
+    # Sets the cask's download checksum.
+    #
+    # ### Example
+    #
+    # For universal or single-architecture downloads:
+    #
+    # ```ruby
+    # sha256 "7bdb497080ffafdfd8cc94d8c62b004af1be9599e865e5555e456e2681e150ca"
+    # ```
+    #
+    # For architecture-dependent downloads:
+    #
+    # ```ruby
+    # sha256 arm:   "7bdb497080ffafdfd8cc94d8c62b004af1be9599e865e5555e456e2681e150ca",
+    #         intel: "b3c1c2442480a0219b9e05cf91d03385858c20f04b764ec08a3fa83d1b27e7b2"
+    # ```
+    #
     # @api public
     def sha256(arg = nil, arm: nil, intel: nil)
       should_return = arg.nil? && arm.nil? && intel.nil?
@@ -237,7 +321,7 @@ module Cask
       set_unique_stanza(:sha256, should_return) do
         @on_system_blocks_exist = true if arm.present? || intel.present?
 
-        val = arg || on_arch_conditional(arm: arm, intel: intel)
+        val = arg || on_arch_conditional(arm:, intel:)
         case val
         when :no_check
           val
@@ -249,6 +333,14 @@ module Cask
       end
     end
 
+    # Sets the cask's architecture strings.
+    #
+    # ### Example
+    #
+    # ```ruby
+    # arch arm: "darwin-arm64", intel: "darwin"
+    # ```
+    #
     # @api public
     def arch(arm: nil, intel: nil)
       should_return = arm.nil? && intel.nil?
@@ -256,14 +348,18 @@ module Cask
       set_unique_stanza(:arch, should_return) do
         @on_system_blocks_exist = true
 
-        on_arch_conditional(arm: arm, intel: intel)
+        on_arch_conditional(arm:, intel:)
       end
     end
 
-    # `depends_on` uses a load method so that multiple stanzas can be merged.
+    # Declare dependencies and requirements for a cask.
+    #
+    # NOTE: Multiple dependencies can be specified.
+    #
     # @api public
     def depends_on(**kwargs)
       @depends_on ||= DSL::DependsOn.new
+      @depends_on_set_in_block = true if @called_in_on_system_block
       return @depends_on if kwargs.empty?
 
       begin
@@ -274,9 +370,11 @@ module Cask
       @depends_on
     end
 
+    # Declare conflicts that keep a cask from installing or working correctly.
+    #
     # @api public
     def conflicts_with(**kwargs)
-      # TODO: remove this constraint, and instead merge multiple conflicts_with stanzas
+      # TODO: Remove this constraint and instead merge multiple `conflicts_with` stanzas
       set_unique_stanza(:conflicts_with, kwargs.empty?) { DSL::ConflictsWith.new(**kwargs) }
     end
 
@@ -288,6 +386,8 @@ module Cask
       cask.caskroom_path
     end
 
+    # The staged location for this cask, including version number.
+    #
     # @api public
     def staged_path
       return @staged_path if @staged_path
@@ -296,6 +396,8 @@ module Cask
       @staged_path = caskroom_path.join(cask_version.to_s)
     end
 
+    # Provide the user with cask-specific information at install time.
+    #
     # @api public
     def caveats(*strings, &block)
       @caveats ||= DSL::Caveats.new(cask)
@@ -312,36 +414,79 @@ module Cask
     end
 
     def discontinued?
+      odisabled "`discontinued?`", "`deprecated?` or `disabled?`"
       @caveats&.discontinued? == true
     end
 
+    # Asserts that the cask artifacts auto-update.
+    #
     # @api public
     def auto_updates(auto_updates = nil)
       set_unique_stanza(:auto_updates, auto_updates.nil?) { auto_updates }
     end
 
+    # Automatically fetch the latest version of a cask from changelogs.
+    #
     # @api public
     def livecheck(&block)
-      @livecheck ||= Livecheck.new(self)
+      @livecheck ||= Livecheck.new(cask)
       return @livecheck unless block
 
-      if !@cask.allow_reassignment && @livecheckable
+      if !@cask.allow_reassignment && @livecheck_defined
         raise CaskInvalidError.new(cask, "'livecheck' stanza may only appear once.")
       end
 
-      @livecheckable = true
+      @livecheck_defined = true
       @livecheck.instance_eval(&block)
     end
 
+    # Whether the cask contains a `livecheck` block. This is a legacy alias
+    # for `#livecheck_defined?`.
+    sig { returns(T::Boolean) }
     def livecheckable?
-      @livecheckable == true
+      # odeprecated "`livecheckable?`", "`livecheck_defined?`"
+      @livecheck_defined == true
+    end
+
+    # Declare that a cask is no longer functional or supported.
+    #
+    # NOTE: A warning will be shown when trying to install this cask.
+    #
+    # @api public
+    def deprecate!(date:, because:, replacement: nil)
+      @deprecation_date = Date.parse(date)
+      return if @deprecation_date > Date.today
+
+      @deprecation_reason = because
+      @deprecation_replacement = replacement
+      @deprecated = true
+    end
+
+    # Declare that a cask is no longer functional or supported.
+    #
+    # NOTE: An error will be thrown when trying to install this cask.
+    #
+    # @api public
+    def disable!(date:, because:, replacement: nil)
+      @disable_date = Date.parse(date)
+
+      if @disable_date > Date.today
+        @deprecation_reason = because
+        @deprecation_replacement = replacement
+        @deprecated = true
+        return
+      end
+
+      @disable_reason = because
+      @disable_replacement = replacement
+      @disabled = true
     end
 
     ORDINARY_ARTIFACT_CLASSES.each do |klass|
       define_method(klass.dsl_key) do |*args, **kwargs|
         T.bind(self, DSL)
         if [*artifacts.map(&:class), klass].include?(Artifact::StageOnly) &&
-           (artifacts.map(&:class) & ACTIVATABLE_ARTIFACT_CLASSES).any?
+           artifacts.map(&:class).intersect?(ACTIVATABLE_ARTIFACT_CLASSES)
           raise CaskInvalidError.new(cask, "'stage_only' must be the only activatable artifact.")
         end
 
@@ -375,9 +520,11 @@ module Cask
       true
     end
 
+    # The directory `app`s are installed into.
+    #
     # @api public
     def appdir
-      return Cask::APPDIR_PLACEHOLDER if Cask.generating_hash?
+      return HOMEBREW_CASK_APPDIR_PLACEHOLDER if Cask.generating_hash?
 
       cask.config.appdir
     end

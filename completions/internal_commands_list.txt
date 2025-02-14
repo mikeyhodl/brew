@@ -10,6 +10,7 @@
 -S
 -v
 abv
+alias
 analytics
 audit
 autoremove
@@ -28,8 +29,10 @@ completions
 config
 contributions
 create
+debugger
 deps
 desc
+determine-test-runners
 developer
 dispatch-build-bottle
 docs
@@ -40,8 +43,11 @@ environment
 extract
 fetch
 formula
+formula-analytics
 formulae
+generate-analytics-api
 generate-cask-api
+generate-cask-ci-matrix
 generate-formula-api
 generate-man-completions
 gist-logs
@@ -67,13 +73,14 @@ nodenv-sync
 options
 outdated
 pin
-postgresql-upgrade-database
+post_install
 postinstall
 pr-automerge
 pr-publish
 pr-pull
 pr-upload
 prof
+pyenv-sync
 rbenv-sync
 readall
 reinstall
@@ -82,10 +89,13 @@ remove
 rm
 rubocop
 ruby
+rubydoc
 search
+setup-ruby
 sh
 shellenv
 style
+tab
 tap
 tap-info
 tap-new
@@ -93,6 +103,7 @@ tc
 test
 tests
 typecheck
+unalias
 unbottled
 uninstall
 unlink
@@ -111,3 +122,4 @@ upgrade
 uses
 vendor-gems
 vendor-install
+verify

@@ -4,11 +4,7 @@
 module Homebrew
   module Livecheck
     # A formula or cask version, split into its component sub-versions.
-    #
-    # @api private
     class LivecheckVersion
-      extend T::Sig
-
       include Comparable
 
       sig {

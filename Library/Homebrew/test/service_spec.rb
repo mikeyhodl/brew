@@ -1,10 +1,9 @@
-# typed: false
 # frozen_string_literal: true
 
 require "formula"
 require "service"
 
-describe Homebrew::Service do
+RSpec.describe Homebrew::Service do
   let(:name) { "formula_name" }
 
   def stub_formula(&block)
@@ -12,6 +11,15 @@ describe Homebrew::Service do
       url "https://brew.sh/test-1.0.tbz"
 
       instance_eval(&block) if block
+    end
+  end
+
+  def stub_formula_with_service_sockets(sockets_var)
+    stub_formula do
+      service do
+        run opt_bin/"beanstalkd"
+        sockets sockets_var
+      end
     end
   end
 
@@ -103,43 +111,44 @@ describe Homebrew::Service do
   end
 
   describe "#sockets" do
-    it "throws for missing type" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "127.0.0.1:80"
-        end
-      end
+    let(:sockets_type_error_message) { "Service#sockets a formatted socket definition as <type>://<host>:<port>" }
 
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
+    it "throws for missing type" do
+      [
+        stub_formula_with_service_sockets("127.0.0.1:80"),
+        stub_formula_with_service_sockets({ socket: "127.0.0.1:80" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
+      end
     end
 
     it "throws for missing host" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "tcp://:80"
-        end
+      [
+        stub_formula_with_service_sockets("tcp://:80"),
+        stub_formula_with_service_sockets({ socket: "tcp://:80" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
       end
-
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
     end
 
     it "throws for missing port" do
-      f = stub_formula do
-        service do
-          run opt_bin/"beanstalkd"
-          sockets "tcp://127.0.0.1"
-        end
+      [
+        stub_formula_with_service_sockets("tcp://127.0.0.1"),
+        stub_formula_with_service_sockets({ socket: "tcp://127.0.0.1" }),
+      ].each do |f|
+        expect { f.service.manual_command }.to raise_error TypeError, sockets_type_error_message
       end
+    end
 
-      expect do
-        f.service.manual_command
-      end.to raise_error TypeError, "Service#sockets a formatted socket definition as <type>://<host>:<port>"
+    it "throws for invalid host" do
+      [
+        stub_formula_with_service_sockets("tcp://300.0.0.1:80"),
+        stub_formula_with_service_sockets({ socket: "tcp://300.0.0.1:80" }),
+      ].each do |f|
+        expect do
+          f.service.manual_command
+        end.to raise_error TypeError, "Service#sockets expects a valid ipv4 or ipv6 host address"
+      end
     end
   end
 
@@ -260,10 +269,57 @@ describe Homebrew::Service do
     end
 
     it "returns valid plist with socket" do
+      plist_expect = <<~EOS
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        \t<key>Label</key>
+        \t<string>homebrew.mxcl.formula_name</string>
+        \t<key>LimitLoadToSessionType</key>
+        \t<array>
+        \t\t<string>Aqua</string>
+        \t\t<string>Background</string>
+        \t\t<string>LoginWindow</string>
+        \t\t<string>StandardIO</string>
+        \t\t<string>System</string>
+        \t</array>
+        \t<key>ProgramArguments</key>
+        \t<array>
+        \t\t<string>#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd</string>
+        \t</array>
+        \t<key>RunAtLoad</key>
+        \t<true/>
+        \t<key>Sockets</key>
+        \t<dict>
+        \t\t<key>listeners</key>
+        \t\t<dict>
+        \t\t\t<key>SockNodeName</key>
+        \t\t\t<string>127.0.0.1</string>
+        \t\t\t<key>SockProtocol</key>
+        \t\t\t<string>TCP</string>
+        \t\t\t<key>SockServiceName</key>
+        \t\t\t<string>80</string>
+        \t\t</dict>
+        \t</dict>
+        </dict>
+        </plist>
+      EOS
+
+      [
+        stub_formula_with_service_sockets("tcp://127.0.0.1:80"),
+        stub_formula_with_service_sockets({ listeners: "tcp://127.0.0.1:80" }),
+      ].each do |f|
+        plist = f.service.to_plist
+        expect(plist).to eq(plist_expect)
+      end
+    end
+
+    it "returns valid plist with multiple sockets" do
       f = stub_formula do
         service do
           run [opt_bin/"beanstalkd", "test"]
-          sockets "tcp://127.0.0.1:80"
+          sockets socket: "tcp://0.0.0.0:80", socket_tls: "tcp://0.0.0.0:443"
         end
       end
 
@@ -292,16 +348,23 @@ describe Homebrew::Service do
         \t<true/>
         \t<key>Sockets</key>
         \t<dict>
-        \t\t<key>Listeners</key>
+        \t\t<key>socket</key>
         \t\t<dict>
-        \t\t\t<key>SockFamily</key>
-        \t\t\t<string>IPv4v6</string>
         \t\t\t<key>SockNodeName</key>
-        \t\t\t<string>127.0.0.1</string>
+        \t\t\t<string>0.0.0.0</string>
         \t\t\t<key>SockProtocol</key>
         \t\t\t<string>TCP</string>
         \t\t\t<key>SockServiceName</key>
         \t\t\t<string>80</string>
+        \t\t</dict>
+        \t\t<key>socket_tls</key>
+        \t\t<dict>
+        \t\t\t<key>SockNodeName</key>
+        \t\t\t<string>0.0.0.0</string>
+        \t\t\t<key>SockProtocol</key>
+        \t\t\t<string>TCP</string>
+        \t\t\t<key>SockServiceName</key>
+        \t\t\t<string>443</string>
         \t\t</dict>
         \t</dict>
         </dict>
@@ -588,6 +651,49 @@ describe Homebrew::Service do
       EOS
       expect(plist).to eq(plist_expect)
     end
+
+    it "expands paths" do
+      f = stub_formula do
+        service do
+          run [opt_sbin/"sleepwatcher", "-V", "-s", "~/.sleep", "-w", "~/.wakeup"]
+          working_dir "~"
+        end
+      end
+
+      plist = f.service.to_plist
+      plist_expect = <<~EOS
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        \t<key>Label</key>
+        \t<string>homebrew.mxcl.formula_name</string>
+        \t<key>LimitLoadToSessionType</key>
+        \t<array>
+        \t\t<string>Aqua</string>
+        \t\t<string>Background</string>
+        \t\t<string>LoginWindow</string>
+        \t\t<string>StandardIO</string>
+        \t\t<string>System</string>
+        \t</array>
+        \t<key>ProgramArguments</key>
+        \t<array>
+        \t\t<string>#{HOMEBREW_PREFIX}/opt/formula_name/sbin/sleepwatcher</string>
+        \t\t<string>-V</string>
+        \t\t<string>-s</string>
+        \t\t<string>#{Dir.home}/.sleep</string>
+        \t\t<string>-w</string>
+        \t\t<string>#{Dir.home}/.wakeup</string>
+        \t</array>
+        \t<key>RunAtLoad</key>
+        \t<true/>
+        \t<key>WorkingDirectory</key>
+        \t<string>#{Dir.home}</string>
+        </dict>
+        </plist>
+      EOS
+      expect(plist).to eq(plist_expect)
+    end
   end
 
   describe "#to_systemd_unit" do
@@ -612,7 +718,7 @@ describe Homebrew::Service do
 
       unit = f.service.to_systemd_unit
       std_path = "#{HOMEBREW_PREFIX}/bin:#{HOMEBREW_PREFIX}/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
-      unit_expect = <<~EOS
+      unit_expect = <<~SYSTEMD
         [Unit]
         Description=Homebrew generated unit for formula_name
 
@@ -621,7 +727,7 @@ describe Homebrew::Service do
 
         [Service]
         Type=simple
-        ExecStart=#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd test
+        ExecStart="#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd" "test"
         Restart=always
         RestartSec=30
         WorkingDirectory=#{HOMEBREW_PREFIX}/var
@@ -631,8 +737,8 @@ describe Homebrew::Service do
         StandardError=append:#{HOMEBREW_PREFIX}/var/log/beanstalkd.error.log
         Environment="PATH=#{std_path}"
         Environment="FOO=BAR"
-      EOS
-      expect(unit).to eq(unit_expect.strip)
+      SYSTEMD
+      expect(unit).to eq(unit_expect)
     end
 
     it "returns valid partial oneshot unit" do
@@ -645,7 +751,7 @@ describe Homebrew::Service do
       end
 
       unit = f.service.to_systemd_unit
-      unit_expect = <<~EOS
+      unit_expect = <<~SYSTEMD
         [Unit]
         Description=Homebrew generated unit for formula_name
 
@@ -654,9 +760,33 @@ describe Homebrew::Service do
 
         [Service]
         Type=oneshot
-        ExecStart=#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd
-      EOS
-      expect(unit).to eq(unit_expect.strip)
+        ExecStart="#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd"
+      SYSTEMD
+      expect(unit).to eq(unit_expect)
+    end
+
+    it "expands paths" do
+      f = stub_formula do
+        service do
+          run opt_bin/"beanstalkd"
+          working_dir "~"
+        end
+      end
+
+      unit = f.service.to_systemd_unit
+      unit_expect = <<~SYSTEMD
+        [Unit]
+        Description=Homebrew generated unit for formula_name
+
+        [Install]
+        WantedBy=default.target
+
+        [Service]
+        Type=simple
+        ExecStart="#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd"
+        WorkingDirectory=#{Dir.home}
+      SYSTEMD
+      expect(unit).to eq(unit_expect)
     end
   end
 
@@ -671,7 +801,7 @@ describe Homebrew::Service do
       end
 
       unit = f.service.to_systemd_timer
-      unit_expect = <<~EOS
+      unit_expect = <<~SYSTEMD
         [Unit]
         Description=Homebrew generated timer for formula_name
 
@@ -681,8 +811,8 @@ describe Homebrew::Service do
         [Timer]
         Unit=homebrew.formula_name
         OnUnitActiveSec=5
-      EOS
-      expect(unit).to eq(unit_expect.strip)
+      SYSTEMD
+      expect(unit).to eq(unit_expect)
     end
 
     it "returns valid partial timer" do
@@ -694,7 +824,7 @@ describe Homebrew::Service do
       end
 
       unit = f.service.to_systemd_timer
-      unit_expect = <<~EOS
+      unit_expect = <<~SYSTEMD
         [Unit]
         Description=Homebrew generated timer for formula_name
 
@@ -703,7 +833,8 @@ describe Homebrew::Service do
 
         [Timer]
         Unit=homebrew.formula_name
-      EOS
+
+      SYSTEMD
       expect(unit).to eq(unit_expect)
     end
 
@@ -742,7 +873,7 @@ describe Homebrew::Service do
         end
 
         unit = f.service.to_systemd_timer
-        unit_expect = <<~EOS
+        unit_expect = <<~SYSTEMD
           [Unit]
           Description=Homebrew generated timer for formula_name
 
@@ -753,8 +884,8 @@ describe Homebrew::Service do
           Unit=homebrew.formula_name
           Persistent=true
           OnCalendar=#{calendar}
-        EOS
-        expect(unit).to eq(unit_expect.chomp)
+        SYSTEMD
+        expect(unit).to eq(unit_expect)
       end
     end
   end
@@ -911,6 +1042,109 @@ describe Homebrew::Service do
 
       command = f.service.command
       expect(command).to eq(["#{HOMEBREW_PREFIX}/opt/#{name}/bin/beanstalkd", "test", "macos"])
+    end
+  end
+
+  describe "#to_hash" do
+    let(:serialized_hash) do
+      {
+        environment_variables: {
+          PATH: "$HOMEBREW_PREFIX/bin:$HOMEBREW_PREFIX/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+        },
+        run:                   [Pathname("$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd"), "test"],
+        run_type:              :immediate,
+        working_dir:           "/$HOME",
+        cron:                  "0 0 * * 0",
+        sockets:               "tcp://0.0.0.0:80",
+      }
+    end
+
+    # NOTE: The calls to `Formula.generating_hash!` and `Formula.generated_hash!`
+    #       are not idempotent so they can only be used in one test.
+    it "replaces local paths with placeholders" do
+      f = stub_formula do
+        service do
+          run [opt_bin/"beanstalkd", "test"]
+          environment_variables PATH: std_service_path_env
+          working_dir Dir.home
+          cron "@weekly"
+          sockets "tcp://0.0.0.0:80"
+        end
+      end
+
+      Formula.generating_hash!
+      expect(f.service.to_hash).to eq(serialized_hash)
+      Formula.generated_hash!
+    end
+  end
+
+  describe ".from_hash" do
+    let(:serialized_hash) do
+      {
+        "name"                  => {
+          "linux" => "custom.systemd.name",
+          "macos" => "custom.launchd.name",
+        },
+        "environment_variables" => {
+          "PATH" => "$HOMEBREW_PREFIX/bin:$HOMEBREW_PREFIX/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+        },
+        "run"                   => ["$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd", "test"],
+        "run_type"              => "immediate",
+        "working_dir"           => HOMEBREW_HOME_PLACEHOLDER,
+        "keep_alive"            => { "successful_exit" => false },
+      }
+    end
+
+    let(:deserialized_hash) do
+      {
+        name:                  {
+          linux: "custom.systemd.name",
+          macos: "custom.launchd.name",
+        },
+        environment_variables: {
+          PATH: "#{HOMEBREW_PREFIX}/bin:#{HOMEBREW_PREFIX}/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+        },
+        run:                   ["#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd", "test"],
+        run_type:              :immediate,
+        working_dir:           Dir.home,
+        keep_alive:            { successful_exit: false },
+      }
+    end
+
+    it "replaces placeholders with local paths" do
+      expect(described_class.from_hash(serialized_hash)).to eq(deserialized_hash)
+    end
+
+    describe "run command" do
+      it "handles String argument correctly" do
+        expect(described_class.from_hash({
+          "run" => "$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd",
+        })).to eq({
+          run: "#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd",
+        })
+      end
+
+      it "handles Array argument correctly" do
+        expect(described_class.from_hash({
+          "run" => ["$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd", "--option"],
+        })).to eq({
+          run: ["#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd", "--option"],
+        })
+      end
+
+      it "handles Hash argument correctly" do
+        expect(described_class.from_hash({
+          "run" => {
+            "linux" => "$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd",
+            "macos" => ["$HOMEBREW_PREFIX/opt/formula_name/bin/beanstalkd", "--option"],
+          },
+        })).to eq({
+          run: {
+            linux: "#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd",
+            macos: ["#{HOMEBREW_PREFIX}/opt/formula_name/bin/beanstalkd", "--option"],
+          },
+        })
+      end
     end
   end
 end

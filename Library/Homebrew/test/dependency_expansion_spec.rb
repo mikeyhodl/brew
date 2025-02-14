@@ -1,12 +1,12 @@
-# typed: false
 # frozen_string_literal: true
 
 require "dependency"
 
-describe Dependency do
+RSpec.describe Dependency do
   def build_dep(name, tags = [], deps = [])
     dep = described_class.new(name.to_s, tags)
-    allow(dep).to receive(:to_formula).and_return(instance_double(Formula, deps: deps, name: name))
+    allow(dep).to receive(:to_formula).and_return \
+      instance_double(Formula, deps:, name:, full_name: name)
     dep
   end
 
@@ -15,7 +15,7 @@ describe Dependency do
   let(:baz) { build_dep(:baz) }
   let(:qux) { build_dep(:qux) }
   let(:deps) { [foo, bar, baz, qux] }
-  let(:formula) { instance_double(Formula, deps: deps, name: "f") }
+  let(:formula) { instance_double(Formula, deps:, name: "f") }
 
   describe "::expand" do
     it "yields dependent and dependency pairs" do
@@ -44,20 +44,21 @@ describe Dependency do
     end
 
     it "preserves dependency order" do
-      allow(foo).to receive(:to_formula).and_return(instance_double(Formula, name: "f", deps: [qux, baz]))
+      allow(foo).to receive(:to_formula).and_return \
+        instance_double(Formula, name: "foo", full_name: "foo", deps: [qux, baz])
       expect(described_class.expand(formula)).to eq([qux, baz, foo, bar])
     end
   end
 
   it "skips optionals by default" do
     deps = [build_dep(:foo, [:optional]), bar, baz, qux]
-    f = instance_double(Formula, deps: deps, build: instance_double(BuildOptions, with?: false), name: "f")
+    f = instance_double(Formula, deps:, build: instance_double(BuildOptions, with?: false), name: "f")
     expect(described_class.expand(f)).to eq([bar, baz, qux])
   end
 
   it "keeps recommended dependencies by default" do
     deps = [build_dep(:foo, [:recommended]), bar, baz, qux]
-    f = instance_double(Formula, deps: deps, build: instance_double(BuildOptions, with?: true), name: "f")
+    f = instance_double(Formula, deps:, build: instance_double(BuildOptions, with?: true), name: "f")
     expect(described_class.expand(f)).to eq(deps)
   end
 
@@ -70,14 +71,6 @@ describe Dependency do
       expect(expected.tags).to eq(actual.tags)
       expect(expected).to eq(actual)
     end
-  end
-
-  it "merges dependencies and preserves env_proc" do
-    env_proc = double
-    dep = described_class.new("foo", [], env_proc)
-    allow(dep).to receive(:to_formula).and_return(instance_double(Formula, deps: [], name: "foo"))
-    deps.replace([dep])
-    expect(described_class.expand(formula).first.env_proc).to eq(env_proc)
   end
 
   it "merges tags without duplicating them" do
@@ -125,8 +118,9 @@ describe Dependency do
   it "doesn't raise an error when a dependency is cyclic" do
     foo = build_dep(:foo)
     bar = build_dep(:bar, [], [foo])
-    allow(foo).to receive(:to_formula).and_return(instance_double(Formula, deps: [bar], name: foo.name))
-    f = instance_double(Formula, name: "f", deps: [foo, bar])
+    allow(foo).to receive(:to_formula).and_return \
+      instance_double(Formula, deps: [bar], name: foo.name, full_name: foo.name)
+    f = instance_double(Formula, name: "f", full_name: "f", deps: [foo, bar])
     expect { described_class.expand(f) }.not_to raise_error
   end
 

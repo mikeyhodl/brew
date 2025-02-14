@@ -1,12 +1,8 @@
-# typed: false
+# typed: true # rubocop:todo Sorbet/StrictSigil
 # frozen_string_literal: true
 
 # A formula option.
-#
-# @api private
 class Option
-  extend T::Sig
-
   attr_reader :name, :description, :flag
 
   def initialize(name, description = "")
@@ -15,9 +11,8 @@ class Option
     @description = description
   end
 
-  def to_s
-    flag
-  end
+  sig { returns(String) }
+  def to_s = flag
 
   def <=>(other)
     return unless other.is_a?(Option)
@@ -41,11 +36,7 @@ class Option
 end
 
 # A deprecated formula option.
-#
-# @api private
 class DeprecatedOption
-  extend T::Sig
-
   attr_reader :old, :current
 
   def initialize(old, current)
@@ -70,11 +61,7 @@ class DeprecatedOption
 end
 
 # A collection of formula options.
-#
-# @api private
 class Options
-  extend T::Sig
-
   include Enumerable
 
   def self.create(array)

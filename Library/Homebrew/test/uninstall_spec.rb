@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "uninstall"
 
-describe Homebrew::Uninstall do
+RSpec.describe Homebrew::Uninstall do
   let(:dependency) { formula("dependency") { url "f-1" } }
 
   let(:dependent_formula) do
@@ -34,7 +33,7 @@ describe Homebrew::Uninstall do
 
     tab = Tab.empty
     tab.homebrew_version = "1.1.6"
-    tab.tabfile = dependent_formula.latest_installed_prefix/Tab::FILENAME
+    tab.tabfile = dependent_formula.latest_installed_prefix/AbstractTab::FILENAME
     tab.runtime_dependencies = [
       { "full_name" => "dependency", "version" => "1" },
     ]
@@ -48,17 +47,7 @@ describe Homebrew::Uninstall do
   end
 
   describe "::handle_unsatisfied_dependents" do
-    specify "when developer" do
-      ENV["HOMEBREW_DEVELOPER"] = "1"
-
-      expect do
-        described_class.handle_unsatisfied_dependents(kegs_by_rack)
-      end.to output(/Warning/).to_stderr
-
-      expect(Homebrew).not_to have_failed
-    end
-
-    specify "when not developer" do
+    specify "when `ignore_dependencies` is false" do
       expect do
         described_class.handle_unsatisfied_dependents(kegs_by_rack)
       end.to output(/Error/).to_stderr
@@ -66,7 +55,7 @@ describe Homebrew::Uninstall do
       expect(Homebrew).to have_failed
     end
 
-    specify "when not developer and `ignore_dependencies` is true" do
+    specify "when `ignore_dependencies` is true" do
       expect do
         described_class.handle_unsatisfied_dependents(kegs_by_rack, ignore_dependencies: true)
       end.not_to output.to_stderr

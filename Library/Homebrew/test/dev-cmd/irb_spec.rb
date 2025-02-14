@@ -1,9 +1,9 @@
-# typed: false
 # frozen_string_literal: true
 
 require "cmd/shared_examples/args_parse"
+require "dev-cmd/irb"
 
-describe "brew irb" do
+RSpec.describe Homebrew::DevCmd::Irb do
   it_behaves_like "parseable arguments"
 
   describe "integration test" do
@@ -28,7 +28,10 @@ describe "brew irb" do
         .and not_to_output.to_stderr
         .and be_a_success
 
-      expect(history_file).to exist
+      # TODO: newer Ruby only supports history saving in interactive sessions
+      # and not if you feed in data from a file or stdin like we are doing here.
+      # The test will need to be adjusted for this to work.
+      # expect(history_file).to exist
     end
   end
 end

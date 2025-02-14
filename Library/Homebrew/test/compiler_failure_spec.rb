@@ -1,9 +1,8 @@
-# typed: false
 # frozen_string_literal: true
 
 require "compilers"
 
-describe CompilerFailure do
+RSpec.describe CompilerFailure do
   alias_matcher :fail_with, :be_fails_with
 
   describe "::create" do

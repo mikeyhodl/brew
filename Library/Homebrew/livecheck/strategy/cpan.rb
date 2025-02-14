@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 module Homebrew
@@ -18,8 +18,6 @@ module Homebrew
       #
       # @api public
       class Cpan
-        extend T::Sig
-
         NICE_NAME = "CPAN"
 
         # The `Regexp` used to determine if the strategy applies to the URL.
@@ -29,7 +27,7 @@ module Homebrew
           (?<prefix>[^/]+) # Filename text before the version
           -v?\d+(?:\.\d+)* # The numeric version
           (?<suffix>[^/]+) # Filename text after the version
-        }ix.freeze
+        }ix
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -79,14 +77,14 @@ module Homebrew
           params(
             url:    String,
             regex:  T.nilable(Regexp),
-            unused: T.nilable(T::Hash[Symbol, T.untyped]),
-            block:  T.untyped,
+            unused: T.untyped,
+            block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
         def self.find_versions(url:, regex: nil, **unused, &block)
           generated = generate_input_values(url)
 
-          T.unsafe(PageMatch).find_versions(url: generated[:url], regex: regex || generated[:regex], **unused, &block)
+          PageMatch.find_versions(url: generated[:url], regex: regex || generated[:regex], **unused, &block)
         end
       end
     end

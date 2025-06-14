@@ -75,9 +75,7 @@ module Homebrew
               Homebrew::API.merge_variations(cask, bottle_tag:)
             end
 
-            unless args.dry_run?
-              File.write("api/internal/cask.#{bottle_tag}.json", JSON.pretty_generate(variation_casks))
-            end
+            File.write("api/internal/cask.#{bottle_tag}.json", JSON.generate(variation_casks)) unless args.dry_run?
           end
         end
       end
